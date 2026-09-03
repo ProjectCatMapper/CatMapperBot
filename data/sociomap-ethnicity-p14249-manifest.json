@@ -1,0 +1,10 @@
+{
+  "database": "SocioMap",
+  "dataset_cmid": "SD2196",
+  "domain": "ETHNICITY",
+  "generated_at_utc": "2026-09-03T22:36:40+00:00",
+  "query": "MATCH (:DATASET {CMID: $dataset_cmid})-[r:USES]->(c:CATEGORY:ETHNICITY)\nWITH c.CMID AS cmid, coalesce(r.Key, r.key) AS source_key\nWHERE source_key =~ '^ID == Q[0-9]+$'\nRETURN DISTINCT cmid, source_key\nORDER BY cmid, source_key",
+  "row_count": 13402,
+  "schema_version": 1,
+  "sha256": "1dff0dd9e5a3bdddf9f2de2b5d502cedfe0e93f93da624aaf235a6c47247aef6"
+}

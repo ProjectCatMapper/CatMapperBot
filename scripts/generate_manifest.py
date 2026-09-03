@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Generate the read-only SocioMap ethnicity P14249 input manifest."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+from neo4j import GraphDatabase
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from catmapperbot.manifest import validate_rows
+
+DATASET_CMID = "SD2196"
+QUERY = """
+MATCH (:DATASET {CMID: $dataset_cmid})-[r:USES]->(c:CATEGORY:ETHNICITY)
+WITH c.CMID AS cmid, coalesce(r.Key, r.key) AS source_key
+WHERE source_key =~ '^ID == Q[0-9]+$'
+RETURN DISTINCT cmid, source_key
+ORDER BY cmid, source_key
+""".strip()
+SOURCE_KEY_PATTERN = re.compile(r"^ID == (Q[1-9][0-9]*)$")
+
+
+def required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise SystemExit(f"{name} must be set")
+    return value
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--metadata", type=Path, required=True)
+    args = parser.parse_args()
+
+    uri = required_env("CATMAPPER_NEO4J_URI")
+    user = required_env("CATMAPPER_NEO4J_USER")
+    password = required_env("CATMAPPER_NEO4J_PASSWORD")
+    rows: list[dict[str, str]] = []
+    with GraphDatabase.driver(uri, auth=(user, password), encrypted=False) as driver:
+        driver.verify_connectivity()
+        with driver.session() as session:
+            records = session.run(QUERY, dataset_cmid=DATASET_CMID)
+            for record in records:
+                match = SOURCE_KEY_PATTERN.fullmatch(record["source_key"] or "")
+                if not match:
+                    raise ValueError(f"unexpected source key: {record['source_key']!r}")
+                rows.append({"qid": match.group(1), "cmid": record["cmid"]})
+
+    rows.sort(key=lambda row: int(row["qid"][1:]))
+    validate_rows(rows)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["qid", "cmid"], lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    digest = hashlib.sha256(args.output.read_bytes()).hexdigest()
+    metadata = {
+        "schema_version": 1,
+        "generated_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "database": "SocioMap",
+        "dataset_cmid": DATASET_CMID,
+        "domain": "ETHNICITY",
+        "query": QUERY,
+        "row_count": len(rows),
+        "sha256": digest,
+    }
+    args.metadata.parent.mkdir(parents=True, exist_ok=True)
+    args.metadata.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
