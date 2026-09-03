@@ -1,0 +1,17 @@
+{
+  "category_scope": "CATEGORY with AM CMIDs",
+  "claim_datatype": "url",
+  "conflict_count": 2,
+  "conflicts_file": "archamap-exact-match-p2888-manifest-conflicts.csv",
+  "conflicts_sha256": "d19f197e177dd8611b494b95e2e32b8b48dd8eda463959299c04b34eebe3f838",
+  "database": "ArchaMap",
+  "dataset_cmid": "AD42544",
+  "generated_at_utc": "2026-09-03T22:44:35+00:00",
+  "query": "MATCH (:DATASET {CMID: $dataset_cmid})-[r:USES]->(c:CATEGORY)\nWITH c.CMID AS cmid, r.Key AS source_key\nWHERE cmid =~ '^AM[0-9]+$' AND source_key =~ '^ID == Q[0-9]+$'\nRETURN DISTINCT cmid, source_key\nORDER BY cmid, source_key",
+  "row_count": 2559,
+  "schema_version": 1,
+  "sha256": "65c6206430e77165e63ea9ca9305f5ec1aceadc29eb8a0d4f7793c52a1be7d47",
+  "source_qid_count": 2561,
+  "target": "archamap",
+  "wikidata_property": "P2888"
+}

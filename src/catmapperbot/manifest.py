@@ -1,4 +1,4 @@
-"""Validate deterministic QID-to-SocioMap-ID manifest rows."""
+"""Validate deterministic QID-to-CatMapper-ID manifest rows."""
 
 from __future__ import annotations
 
@@ -8,11 +8,32 @@ import re
 from pathlib import Path
 
 QID_PATTERN = re.compile(r"^Q[1-9][0-9]*$")
-CMID_PATTERN = re.compile(r"^SM[1-9][0-9]*$")
+TARGETS = {
+    "sociomap": {
+        "property": "P14249",
+        "datatype": "external-id",
+        "cmid_pattern": re.compile(r"^SM[1-9][0-9]*$"),
+        "claim_value": lambda cmid: cmid,
+    },
+    "archamap": {
+        "property": "P2888",
+        "datatype": "url",
+        "cmid_pattern": re.compile(r"^AM[1-9][0-9]*$"),
+        "claim_value": lambda cmid: f"https://catmapper.org/archamap/{cmid}",
+    },
+}
 
 
-def validate_rows(rows: list[dict[str, str]]) -> None:
-    """Raise ValueError when rows cannot safely produce P14249 additions."""
+def target_config(target: str) -> dict:
+    try:
+        return TARGETS[target]
+    except KeyError as error:
+        raise ValueError(f"unknown target {target!r}; choose from {', '.join(TARGETS)}") from error
+
+
+def validate_rows(rows: list[dict[str, str]], target: str = "sociomap") -> None:
+    """Raise ValueError when rows cannot safely produce the target's claims."""
+    config = target_config(target)
     seen_qids: set[str] = set()
     if not rows:
         raise ValueError("manifest must contain at least one row")
@@ -23,20 +44,27 @@ def validate_rows(rows: list[dict[str, str]]) -> None:
         cmid = row["cmid"].strip()
         if not QID_PATTERN.fullmatch(qid):
             raise ValueError(f"row {index}: invalid QID {qid!r}")
-        if not CMID_PATTERN.fullmatch(cmid):
-            raise ValueError(f"row {index}: invalid SocioMap category ID {cmid!r}")
+        if not config["cmid_pattern"].fullmatch(cmid):
+            raise ValueError(f"row {index}: invalid {target} category ID {cmid!r}")
         if qid in seen_qids:
             raise ValueError(f"row {index}: duplicate QID {qid}")
         seen_qids.add(qid)
 
 
-def load_manifest(path: Path) -> list[dict[str, str]]:
+def load_manifest(path: Path, target: str = "sociomap") -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    validate_rows(rows)
+    validate_rows(rows, target)
     return rows
+
+
+def claim_value(cmid: str, target: str) -> str:
+    """Return the correctly typed Wikidata claim value for a validated CMID."""
+    config = target_config(target)
+    if not config["cmid_pattern"].fullmatch(cmid):
+        raise ValueError(f"invalid {target} category ID {cmid!r}")
+    return config["claim_value"](cmid)
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
