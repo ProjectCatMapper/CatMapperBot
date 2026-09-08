@@ -59,6 +59,19 @@ python scripts/validate_manifest.py data/sociomap-ethnicity-p14249-manifest.csv 
 python -m unittest discover -s tests -v
 ```
 
+## Review-only QuickStatements pilots
+
+The generator below performs read-only Wikidata preflight and writes a Markdown file containing QuickStatements v1 commands. It does not submit a batch or make edits.
+
+```bash
+python scripts/create_quickstatements_pilot.py \
+  data/sociomap-ethnicity-p14249-manifest.csv \
+  --output batches/sociomap-p14249-pilot-100.md \
+  --limit 100
+```
+
+Regenerate the pilot immediately before any manual submission, and submit it only after explicit Wikidata reviewer approval.
+
 ## License
 
 MIT. The manifests contain public QIDs and public CatMapper IDs only.
