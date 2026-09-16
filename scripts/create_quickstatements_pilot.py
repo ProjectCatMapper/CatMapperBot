@@ -40,6 +40,17 @@ def main() -> None:
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument(
+        "--exclude-qids",
+        type=Path,
+        default=None,
+        help="Optional file of QIDs (one per line, e.g. taken from a prior batch) to skip.",
+    )
+    parser.add_argument(
+        "--exclude-source",
+        default=None,
+        help="Human-readable provenance for --exclude-qids, recorded in the batch header.",
+    )
     args = parser.parse_args()
     if args.limit < 1:
         raise SystemExit("--limit must be positive")
@@ -48,6 +59,15 @@ def main() -> None:
         candidates = list(csv.DictReader(handle))
     if not candidates or set(candidates[0]) != {"qid", "cmid"}:
         raise SystemExit("manifest must contain qid and cmid columns")
+
+    excluded: set[str] = set()
+    if args.exclude_qids is not None:
+        excluded = {
+            line.strip()
+            for line in args.exclude_qids.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        candidates = [row for row in candidates if row["qid"] not in excluded]
 
     selected: list[dict[str, str]] = []
     checked = 0
@@ -75,6 +95,10 @@ def main() -> None:
 
     manifest_sha256 = hashlib.sha256(args.manifest.read_bytes()).hexdigest()
     generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    exclusion_note = ""
+    if excluded:
+        source = args.exclude_source or args.exclude_qids.as_posix()
+        exclusion_note = f", excluding {len(excluded)} QIDs listed in `{source}` from a prior batch"
     commands = "\n".join(f'{row["qid"]}\t{PROPERTY}\t"{row["cmid"]}"' for row in selected)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
@@ -91,9 +115,10 @@ def main() -> None:
 | Preflighted candidate rows | {checked} |
 | Skipped: existing `{PROPERTY}` | {skipped_existing} |
 | Skipped: missing or redirected item | {skipped_unreadable} |
+| Excluded via `--exclude-qids` | {len(excluded)} |
 | Selected statements | {len(selected)} |
 
-The selection is deterministic: the first {args.limit} manifest rows whose target items were readable and did not have a `{PROPERTY}` claim at preflight. Re-run this preflight immediately before any submission; an item can change after this file is generated. Do not submit if the pilot lacks explicit Wikidata reviewer approval.
+The selection is deterministic: the first {args.limit} manifest rows whose target items were readable and did not have a `{PROPERTY}` claim at preflight{exclusion_note}. Re-run this preflight immediately before any submission; an item can change after this file is generated. Do not submit if the pilot lacks explicit Wikidata reviewer approval.
 
 ## QuickStatements v1 commands
 
